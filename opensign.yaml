@@ -1,0 +1,73 @@
+# Basic Config
+esphome:
+  name: open-sign
+  platform: ESP8266
+  board: esp8285
+
+
+# Enable logging
+logger:
+
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret hass_encryption_key
+
+ota:
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "OpenSign-B3Ed25"
+    password: !secret fallback_wifi_password
+
+captive_portal:
+
+web_server:
+  port: 80
+  include_internal: true
+
+# Device Specific Config
+binary_sensor:
+  - platform: gpio
+    id: push_button
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: True
+    internal: true
+    on_press:
+      # Prevents unintended LED lit states.
+      if:
+        condition:
+          - switch.is_off: relay
+        then:
+          - switch.turn_on: blue_led
+          - switch.turn_on: relay
+        else:
+          - switch.turn_off: relay
+
+switch:
+  # The relay switches on the red side of the LED when active.
+  - platform: gpio
+    name: "Open Sign"
+    pin: GPIO12
+    id: relay
+    on_turn_off:
+      if:
+        condition:
+          - switch.is_on: blue_led
+        then:
+          - switch.turn_off: blue_led
+  # With this we can control the blue side of the LED.
+  - platform: gpio
+    id: blue_led
+    pin:
+      number: GPIO13
+      inverted: True
+

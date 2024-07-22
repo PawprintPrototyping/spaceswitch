@@ -30,6 +30,7 @@ api:
     key: !secret hass_encryption_key
 
 ota:
+  platform: esphome
 
 
 wifi:
@@ -51,6 +52,7 @@ web_server:
 # https://esphome.io/components/http_request.html
 # https://github.com/membermatters/MemberMatters/blob/main/docs/SPACEDIRECTORY.md
 http_request:
+  verify_ssl: false
 
 binary_sensor:
   - name: "Space Switch"
@@ -70,7 +72,6 @@ binary_sensor:
       then:
         - http_request.post:
             url: "https://members.pawprintprototyping.org/api/spacedirectory/update"
-            verify_ssl: false
             headers:
               Content-Type: application/json
               Authorization: !secret membermatters_api_key
@@ -81,8 +82,8 @@ binary_sensor:
                 - logger.log:
                     format: "Response status: %d, Duration: %u ms"
                     args:
-                      - status_code
-                      - duration_ms
+                      - response->status_code
+                      - response->duration_ms
                 - light.turn_on:
                     id: status_light
                     transition_length: 0.5s
@@ -95,7 +96,6 @@ binary_sensor:
       then:
         - http_request.post:
             url: "https://members.pawprintprototyping.org/api/spacedirectory/update"
-            verify_ssl: false
             headers:
               Content-Type: application/json
               Authorization: !secret membermatters_api_key
@@ -106,8 +106,8 @@ binary_sensor:
                 - logger.log:
                     format: "Response status: %d, Duration: %u ms"
                     args:
-                      - status_code
-                      - duration_ms
+                      - response->status_code
+                      - response->duration_ms
                 - light.turn_on:
                     id: status_light
                     transition_length: 0.5s

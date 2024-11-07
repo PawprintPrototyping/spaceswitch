@@ -1,0 +1,70 @@
+---
+# AirGradient DIY Basic
+# https://www.airgradient.com/open-airgradient/instructions/overview/
+
+substitutions:
+  name: "airgradient"
+  friendly_name: "Airgradient"
+  name_add_mac_suffix: "false"  # Must have quotes around value
+
+# Enable Home Assistant API
+api:  # Add encryption key as desired
+  encryption:
+    key: !secret hass_encryption_key
+
+ota:  # Add password as desired
+  platform: esphome
+  # password:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Airgradient-B3Ed25"
+    password: !secret fallback_wifi_password
+
+
+dashboard_import:
+  package_import_url: github://MallocArray/airgradient_esphome/airgradient-basic.yaml
+  import_full_config: false
+
+packages:
+  board: github://MallocArray/airgradient_esphome/packages/airgradient_d1_mini_board.yaml
+  captive_portal: github://MallocArray/airgradient_esphome/packages/captive_portal.yaml
+  pm_2.5: github://MallocArray/airgradient_esphome/packages/sensor_pms5003.yaml
+  co2: github://MallocArray/airgradient_esphome/packages/sensor_s8.yaml
+  temp_humidity: github://MallocArray/airgradient_esphome/packages/sensor_sht40.yaml
+  #temp_humidity: github://MallocArray/airgradient_esphome/packages/sensor_sht30.yaml
+  display: !include packages/display_ssd1306.yaml
+  #display: github://MallocArray/airgradient_esphome/packages/display_ssd1306.yaml
+  airgradient_api: github://MallocArray/airgradient_esphome/packages/airgradient_api_d1_mini_no_sgp41.yaml
+  wifi: github://MallocArray/airgradient_esphome/packages/sensor_wifi.yaml
+  uptime: github://MallocArray/airgradient_esphome/packages/sensor_uptime.yaml
+
+
+time:
+  - platform: sntp
+    on_time:
+      # Every 5 minutes
+      - seconds: 0
+        minutes: /5
+        then:
+          - http_request.post:
+              url: "https://members.pawprintprototyping.org/api/spacedirectory/update"
+              headers:
+                Content-Type: application/json
+                Authorization: !secret membermatters_api_key
+              json: |-
+                root["sensors"][0]["name"] = "Space temperature";
+                root["sensors"][0]["type"] = "temperature";
+                root["sensors"][0]["value"] = id(temp).state;
+              on_response:
+                then:
+                  - logger.log:
+                      format: "Response status: %d, Duration: %u ms"
+                      args:
+                      - response->status_code
+                      - response->duration_ms
+

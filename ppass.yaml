@@ -2,6 +2,13 @@ esphome:
   name: ppass
   friendly_name: ppass
 
+  on_boot:
+    priority: -100
+    then:
+      # Sync override indicators and prime the effective-state so it reflects the stored state on startup
+      - script.execute: update_override_indicators
+      - script.execute: compute_space_open
+
 esp32:
   board: esp32-c3-devkitm-1
   framework:
@@ -29,22 +36,29 @@ wifi:
     password: !secret fallback_wifi_password
 
 captive_portal:
-  
+
 web_server:
   port: 80
 
+# Used to POST space state to MemberMatters SpaceDirectory API
+# https://esphome.io/components/http_request.html
+# https://github.com/membermatters/MemberMatters/blob/main/docs/SPACEDIRECTORY.md
+http_request:
+  verify_ssl: false
 
 light:
   - platform: neopixelbus
+    id: status_light
+    name: "NeoPixel Light"
     type: GRB
     variant: WS2811
     pin: GPIO8
     num_leds: 60
-    name: "NeoPixel Light"
-    
 
 binary_sensor:
+  # Auto-detected space state (e.g., derived from the shop light relay).
   - name: "Light relay"
+    id: light_relay
     platform: gpio
     pin:
       number: GPIO0
@@ -55,8 +69,13 @@ binary_sensor:
     filters:
       - delayed_on: 10ms
       - delayed_off: 10ms
+    on_state:
+      then:
+        - script.execute: compute_space_open
 
+  # When on, ignore the light sensor and use "Forced State" instead.
   - name: "Override Switch"
+    id: override_switch
     platform: gpio
     pin:
       number: GPIO18
@@ -67,8 +86,14 @@ binary_sensor:
     filters:
       - delayed_on: 10ms
       - delayed_off: 10ms
+    on_state:
+      then:
+        - script.execute: update_override_indicators
+        - script.execute: compute_space_open
 
+  # State to report while override is active.
   - name: "Forced State"
+    id: forced_state
     platform: gpio
     pin:
       number: GPIO2
@@ -79,41 +104,138 @@ binary_sensor:
     filters:
       - delayed_on: 10ms
       - delayed_off: 10ms
+    on_state:
+      then:
+        - script.execute: compute_space_open
 
-
+  # Effective open state: forced_state while override is on, otherwise the
+  # light relay. Drives indicator LEDs, stack red/green, NeoPixel colour, and
+  # the MemberMatters SpaceDirectory API update. Value is published by the
+  # compute_space_open script whenever any input sensor changes.
+  - name: "Space Open"
+    id: space_open
+    platform: template
+    on_press:
+      then:
+        - logger.log: "Space is now OPEN"
+        - switch.turn_on: open_led
+        - switch.turn_off: closed_led
+        - switch.turn_on: stack_green
+        - switch.turn_off: stack_red
+        - light.turn_on:
+            id: status_light
+            brightness: 0.5
+            transition_length: 0.5s
+            red: 0
+            green: 1.0
+            blue: 0
+        - http_request.post:
+            url: "https://members.pawprintprototyping.org/api/spacedirectory/update"
+            request_headers:
+              Content-Type: application/json
+              Authorization: !secret membermatters_api_key
+            json: |-
+              root["is_open"] = true;
+            on_response:
+              then:
+                - logger.log:
+                    format: "Reported open. Status: %d, Duration: %u ms"
+                    args:
+                      - response->status_code
+                      - response->duration_ms
+    on_release:
+      then:
+        - logger.log: "Space is now CLOSED"
+        - switch.turn_off: open_led
+        - switch.turn_on: closed_led
+        - switch.turn_off: stack_green
+        - switch.turn_on: stack_red
+        - light.turn_on:
+            id: status_light
+            brightness: 0.5
+            transition_length: 0.5s
+            red: 1.0
+            green: 0
+            blue: 0
+        - http_request.post:
+            url: "https://members.pawprintprototyping.org/api/spacedirectory/update"
+            request_headers:
+              Content-Type: application/json
+              Authorization: !secret membermatters_api_key
+            json: |-
+              root["is_open"] = false;
+            on_response:
+              then:
+                - logger.log:
+                    format: "Reported closed. Status: %d, Duration: %u ms"
+                    args:
+                      - response->status_code
+                      - response->duration_ms
 
 switch:
   - name: "Closed LED"
+    id: closed_led
     platform: gpio
     pin: GPIO1
 
   - name: "Open LED"
+    id: open_led
     platform: gpio
     pin: GPIO3
 
   - name: "Disabled LED"
+    id: disabled_led
     platform: gpio
     pin: GPIO10
 
   - name: "Enabled LED"
+    id: enabled_led
     platform: gpio
     pin: GPIO19
 
   - name: "Stack Beep"
+    id: stack_beep
     platform: gpio
     pin: GPIO4
 
   - name: "Stack Red"
+    id: stack_red
     platform: gpio
     pin: GPIO5
 
   - name: "Stack Yellow"
+    id: stack_yellow
     inverted: true
     platform: gpio
     pin: GPIO6
 
   - name: "Stack Green"
+    id: stack_green
     platform: gpio
     pin: GPIO7
 
+script:
+  # Compute the effective open state and publishes it to the "Space Open" template sensor.
+  # Safe to call from every input.
+  - id: compute_space_open
+    then:
+      - lambda: |-
+          bool is_open = id(override_switch).state
+              ? id(forced_state).state
+              : id(light_relay).state;
+          id(space_open).publish_state(is_open);
 
+  # Reflects the state of the Override Switch on the Enabled/Disabled indicators and the amber stack light.
+  - id: update_override_indicators
+    then:
+      - if:
+          condition:
+            binary_sensor.is_on: override_switch
+          then:
+            - switch.turn_on: enabled_led
+            - switch.turn_off: disabled_led
+            - switch.turn_on: stack_yellow
+          else:
+            - switch.turn_off: enabled_led
+            - switch.turn_on: disabled_led
+            - switch.turn_off: stack_yellow

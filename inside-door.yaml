@@ -1,0 +1,56 @@
+esphome:
+  name: maglock1
+
+esp8266:
+  board: d1_mini
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret hass_encryption_key
+
+ota:
+  platform: esphome
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  min_auth_mode: WPA2
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Maglock1 Fallback Hotspot"
+    password: !secret fallback_wifi_password
+    
+captive_portal:    
+    
+switch:
+  - platform: gpio
+    pin: D4
+    id: relay
+    name: "Maglock Release"
+    icon: "mdi:magnet"
+    on_turn_on:
+    - delay: 250ms
+    - switch.turn_off: relay
+    
+binary_sensor:
+  - platform: gpio
+    device_class: door
+    pin:
+      number: D3
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    filters:
+      - invert:
+    name: "Maglock Door Closed"
+
+# Red LED blinks slowly when connecting to WiFi, fast if there is a crash or other critical error
+status_led:
+    pin:
+      number: D8  

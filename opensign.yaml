@@ -1,9 +1,9 @@
 # Basic Config
 esphome:
   name: open-sign
-  platform: ESP8266
-  board: esp8285
 
+esp8266:
+  board: esp8285
 
 # Enable logging
 logger:
@@ -21,6 +21,11 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  manual_ip:
+    static_ip: 10.13.10.9
+    gateway: 10.13.10.1
+    subnet: 255.255.255.0
+    dns1: 10.13.10.1
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
@@ -71,4 +76,3 @@ switch:
     pin:
       number: GPIO13
       inverted: True
-
